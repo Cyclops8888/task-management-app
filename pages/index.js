@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Trash2, Edit2, Save, X } from 'lucide-react';
+import { Plus, Trash2, Edit2, Save, X, Upload, FileText } from 'lucide-react';
 
 const TaskManagementApp = () => {
   const [tasks, setTasks] = useState([
@@ -12,7 +12,9 @@ const TaskManagementApp = () => {
       testInstitution: '東京都立産業技術研究センター',
       desiredDelivery: '2025-11-14',
       status: '11/7：都産技研の仮申し込み完了',
-      person: '本田・芳賀'
+      person: '本田・芳賀',
+      pdfUrl: null,      // ← 追加
+      pdfName: null      // ← 追加
     },
     {
       id: 2,
@@ -23,7 +25,9 @@ const TaskManagementApp = () => {
       testInstitution: '現時点では必要なし',
       desiredDelivery: '2025-11-29',
       status: '',
-      person: '芳賀'
+      person: '芳賀',
+      pdfUrl: null,      // ← 追加
+      pdfName: null      // ← 追加
     },
     {
       id: 3,
@@ -34,7 +38,9 @@ const TaskManagementApp = () => {
       testInstitution: 'ニッセンケン',
       desiredDelivery: '2025-11-29',
       status: '',
-      person: ''
+      person: '',
+      pdfUrl: null,      // ← 追加
+      pdfName: null      // ← 追加
     },
     {
       id: 4,
@@ -45,7 +51,9 @@ const TaskManagementApp = () => {
       testInstitution: 'ニッセンケン',
       desiredDelivery: '2025-11-29',
       status: '',
-      person: ''
+      person: '',
+      pdfUrl: null,      // ← 追加
+      pdfName: null      // ← 追加
     },
     {
       id: 5,
@@ -56,7 +64,9 @@ const TaskManagementApp = () => {
       testInstitution: 'ニッセンケン',
       desiredDelivery: '2025-12-31',
       status: '',
-      person: ''
+      person: '',
+      pdfUrl: null,      // ← 追加
+      pdfName: null      // ← 追加
     },
     {
       id: 6,
@@ -67,7 +77,9 @@ const TaskManagementApp = () => {
       testInstitution: 'ニッセンケン',
       desiredDelivery: '2026-01-31',
       status: '',
-      person: ''
+      person: '',
+      pdfUrl: null,      // ← 追加
+      pdfName: null      // ← 追加
     },
     {
       id: 7,
@@ -78,7 +90,9 @@ const TaskManagementApp = () => {
       testInstitution: 'ニッセンケン',
       desiredDelivery: '2025-11-20',
       status: '',
-      person: ''
+      person: '',
+      pdfUrl: null,      // ← 追加
+      pdfName: null      // ← 追加
     },
     {
       id: 8,
@@ -89,7 +103,9 @@ const TaskManagementApp = () => {
       testInstitution: 'ボーケン',
       desiredDelivery: '2025-11-20',
       status: '',
-      person: ''
+      person: '',
+      pdfUrl: null,      // ← 追加
+      pdfName: null      // ← 追加
     }
   ]);
 
@@ -103,34 +119,128 @@ const TaskManagementApp = () => {
     testInstitution: '',
     desiredDelivery: '',
     status: '',
-    person: ''
+    person: '',
+    pdfUrl: null,      // ← 追加
+    pdfName: null      // ← 追加
   });
+
+  // ← 新規追加：PDF関連のstate
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [editSelectedFile, setEditSelectedFile] = useState(null);
 
   const handleEdit = (task) => {
     setEditingId(task.id);
     setEditForm(task);
+    setEditSelectedFile(null);  // ← 追加
   };
 
-  const handleSave = () => {
-    setTasks(tasks.map(task => task.id === editingId ? editForm : task));
+  const handleSave = async () => {
+    let updatedForm = { ...editForm };
+
+    // ← 新規追加：編集時に新しいPDFがアップロードされた場合
+    if (editSelectedFile) {
+      setUploading(true);
+      try {
+        // 古いPDFを削除
+        if (editForm.pdfUrl) {
+          await fetch('/api/delete', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: editForm.pdfUrl }),
+          });
+        }
+
+        // 新しいPDFをアップロード
+        const formData = new FormData();
+        formData.append('file', editSelectedFile);
+        const response = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData,
+        });
+        const data = await response.json();
+        
+        if (response.ok) {
+          updatedForm.pdfUrl = data.url;
+          updatedForm.pdfName = data.fileName;
+        } else {
+          alert('PDFのアップロードに失敗しました: ' + data.error);
+        }
+      } catch (error) {
+        console.error('Upload error:', error);
+        alert('PDFのアップロードに失敗しました');
+      } finally {
+        setUploading(false);
+        setEditSelectedFile(null);
+      }
+    }
+
+    setTasks(tasks.map(task => task.id === editingId ? updatedForm : task));
     setEditingId(null);
   };
 
   const handleCancel = () => {
     setEditingId(null);
     setEditForm({});
+    setEditSelectedFile(null);  // ← 追加
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
     if (window.confirm('このタスクを削除しますか？')) {
+      const task = tasks.find(t => t.id === id);
+      
+      // ← 新規追加：PDFも削除
+      if (task?.pdfUrl) {
+        try {
+          await fetch('/api/delete', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: task.pdfUrl }),
+          });
+        } catch (error) {
+          console.error('PDF削除エラー:', error);
+        }
+      }
+      
       setTasks(tasks.filter(task => task.id !== id));
     }
   };
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
+    setUploading(true);
+    let pdfUrl = null;
+    let pdfName = null;
+
+    // ← 新規追加：PDFアップロード処理
+    if (selectedFile) {
+      try {
+        const formData = new FormData();
+        formData.append('file', selectedFile);
+        const response = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData,
+        });
+        const data = await response.json();
+        
+        if (response.ok) {
+          pdfUrl = data.url;
+          pdfName = data.fileName;
+        } else {
+          alert('PDFのアップロードに失敗しました: ' + data.error);
+          setUploading(false);
+          return;
+        }
+      } catch (error) {
+        console.error('Upload error:', error);
+        alert('PDFのアップロードに失敗しました');
+        setUploading(false);
+        return;
+      }
+    }
+
     const newId = Math.max(...tasks.map(t => t.id), 0) + 1;
     const newNo = Math.max(...tasks.map(t => t.no), 0) + 1;
-    setTasks([...tasks, { ...newTask, id: newId, no: newNo }]);
+    setTasks([...tasks, { ...newTask, id: newId, no: newNo, pdfUrl, pdfName }]);
     setNewTask({
       requestDate: '',
       workName: '',
@@ -138,9 +248,36 @@ const TaskManagementApp = () => {
       testInstitution: '',
       desiredDelivery: '',
       status: '',
-      person: ''
+      person: '',
+      pdfUrl: null,      // ← 追加
+      pdfName: null      // ← 追加
     });
+    setSelectedFile(null);  // ← 追加
     setShowAddForm(false);
+    setUploading(false);
+  };
+
+  // ← 新規追加：PDF削除ハンドラ
+  const handleRemovePdf = async (taskId) => {
+    const task = tasks.find(t => t.id === taskId);
+    if (!task?.pdfUrl) return;
+
+    if (window.confirm('このPDFを削除しますか？')) {
+      try {
+        await fetch('/api/delete', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: task.pdfUrl }),
+        });
+        
+        setTasks(tasks.map(t => 
+          t.id === taskId ? { ...t, pdfUrl: null, pdfName: null } : t
+        ));
+      } catch (error) {
+        console.error('PDF削除エラー:', error);
+        alert('PDFの削除に失敗しました');
+      }
+    }
   };
 
   return (
@@ -211,16 +348,38 @@ const TaskManagementApp = () => {
                   className="p-2 border rounded md:col-span-2"
                   rows="2"
                 />
+                {/* ← 新規追加：PDFアップロードフィールド */}
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-semibold text-gray-600 mb-2">
+                    <Upload size={16} className="inline mr-1" />
+                    PDF添付（任意）
+                  </label>
+                  <input
+                    type="file"
+                    accept=".pdf"
+                    onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                    className="w-full p-2 border rounded"
+                  />
+                  {selectedFile && (
+                    <p className="text-sm text-gray-600 mt-1">
+                      選択中: {selectedFile.name}
+                    </p>
+                  )}
+                </div>
               </div>
               <div className="flex gap-2 mt-4">
                 <button
                   onClick={handleAdd}
-                  className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+                  disabled={uploading}
+                  className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 disabled:bg-gray-400"
                 >
-                  追加
+                  {uploading ? 'アップロード中...' : '追加'}
                 </button>
                 <button
-                  onClick={() => setShowAddForm(false)}
+                  onClick={() => {
+                    setShowAddForm(false);
+                    setSelectedFile(null);
+                  }}
                   className="bg-gray-400 text-white px-4 py-2 rounded hover:bg-gray-500"
                 >
                   キャンセル
@@ -298,14 +457,52 @@ const TaskManagementApp = () => {
                           rows="2"
                         />
                       </div>
+                      {/* ← 新規追加：編集時のPDFアップロード */}
+                      <div className="md:col-span-2">
+                        <label className="block text-sm font-semibold text-gray-600 mb-2">
+                          <Upload size={16} className="inline mr-1" />
+                          PDF添付
+                        </label>
+                        {editForm.pdfUrl && !editSelectedFile && (
+                          <div className="mb-2 p-2 bg-gray-100 rounded flex items-center justify-between">
+                            <a
+                              href={editForm.pdfUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-600 hover:underline flex items-center gap-1"
+                            >
+                              <FileText size={16} />
+                              {editForm.pdfName}
+                            </a>
+                            <button
+                              onClick={() => setEditForm({...editForm, pdfUrl: null, pdfName: null})}
+                              className="text-red-600 hover:text-red-800 text-sm"
+                            >
+                              削除
+                            </button>
+                          </div>
+                        )}
+                        <input
+                          type="file"
+                          accept=".pdf"
+                          onChange={(e) => setEditSelectedFile(e.target.files?.[0] || null)}
+                          className="w-full p-2 border rounded"
+                        />
+                        {editSelectedFile && (
+                          <p className="text-sm text-gray-600 mt-1">
+                            新しいファイル: {editSelectedFile.name}
+                          </p>
+                        )}
+                      </div>
                     </div>
                     <div className="flex gap-2">
                       <button
                         onClick={handleSave}
-                        className="flex items-center gap-1 bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700"
+                        disabled={uploading}
+                        className="flex items-center gap-1 bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 disabled:bg-gray-400"
                       >
                         <Save size={16} />
-                        保存
+                        {uploading ? 'アップロード中...' : '保存'}
                       </button>
                       <button
                         onClick={handleCancel}
@@ -364,6 +561,27 @@ const TaskManagementApp = () => {
                         <span className="font-semibold text-gray-600">担当者：</span>
                         <span className="text-gray-800">{task.person}</span>
                       </div>
+                      {/* ← 新規追加：PDF表示 */}
+                      {task.pdfUrl && (
+                        <div className="md:col-span-2">
+                          <span className="font-semibold text-gray-600">添付PDF：</span>
+                          <a
+                            href={task.pdfUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-600 hover:underline ml-2 inline-flex items-center gap-1"
+                          >
+                            <FileText size={16} />
+                            {task.pdfName}
+                          </a>
+                          <button
+                            onClick={() => handleRemovePdf(task.id)}
+                            className="ml-3 text-red-600 hover:text-red-800 text-sm"
+                          >
+                            削除
+                          </button>
+                        </div>
+                      )}
                       {task.status && (
                         <div className="md:col-span-2 bg-yellow-50 p-2 rounded">
                           <span className="font-semibold text-gray-600">進捗：</span>
