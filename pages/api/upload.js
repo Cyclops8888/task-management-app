@@ -31,9 +31,18 @@ export default async function handler(req, res) {
 
     for (const part of parts) {
       if (part.includes('Content-Disposition: form-data; name="file"')) {
+        // 日本語ファイル名に対応するため、バイナリから正しくデコード
         const fileNameMatch = part.match(/filename="(.+?)"/);
         if (fileNameMatch) {
-          fileName = fileNameMatch[1];
+          // バイナリ文字列をBufferに変換してUTF-8でデコード
+          const rawFileName = fileNameMatch[1];
+          try {
+            // Latin1エンコーディングでバイト列として扱い、UTF-8として再解釈
+            fileName = Buffer.from(rawFileName, 'latin1').toString('utf8');
+          } catch (e) {
+            // フォールバック: そのまま使用
+            fileName = rawFileName;
+          }
         }
         
         const headerEnd = part.indexOf('\r\n\r\n');
@@ -55,14 +64,18 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'PDFファイルのみアップロード可能です' });
     }
 
-    const blob = await put(fileName, fileData, {
+    // タイムスタンプを追加してファイル名の重複を防ぐ
+    const timestamp = Date.now();
+    const safeFileName = `${timestamp}_${fileName}`;
+
+    const blob = await put(safeFileName, fileData, {
       access: 'public',
       contentType: 'application/pdf',
     });
 
     return res.status(200).json({
       url: blob.url,
-      fileName: fileName,
+      fileName: fileName, // 元のファイル名を返す
     });
   } catch (error) {
     console.error('Upload error:', error);
